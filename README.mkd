@@ -1,0 +1,7 @@
+# Königsrufen in Haskell
+
+[The game of Königsrufen](https://stompydan.net/koenigsrufen) is rather good fun, and I wanted an excuse to write some Haskell, so I've started to model it here. it doesn't play a full game yet, I will add to it when time and energy allows. The idea is that it will be a library and computer player for the game.
+
+The only major problem I've had so far is in how to deal with different implementations of a player. Currently I have a `PromptPlayer`, which prompts a human in the terminal for actions, and a `BotPlayer` which computes actions itself. They both have instances of the `Player` typeclass. Getting GHC to be happy with me having a heterogenous `Map` of player positions to `Player`-instance ADTs, and for the game to find the instance through the various calls, was a bit of a job for a relative Haskell newcomer! And in GHC 7.8, I found I needed the `ImpredicativeTypes` language extension. This extention doesn't seem to have much favour in the community, so it'd be nice to improve the implementation. Suggestions very welcome.
+
+Other than that, I think it's pretty straight-forward. It's a bit of a playground at the moment. Lenses weren't strictly necessary but look a lot prettier once you can read the flashy operators.
