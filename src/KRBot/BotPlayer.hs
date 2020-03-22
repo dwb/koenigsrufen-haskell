@@ -83,6 +83,7 @@ narrate s = do
     p <- use player
     liftIO $ putStrLn $ show p ++ " bot " ++ s
 
+playerError :: String -> PlayerAction PlayerState ()
 playerError s = do
     p <- use player
     error $ show p ++ " " ++ s

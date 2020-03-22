@@ -116,6 +116,7 @@ cardPoints c@(Card r s) = cardPointsFromRules pts
             | r == king = 5
             | otherwise = 1
 
+sumCardPoints :: (Functor f, Foldable f) => f Card -> Int
 sumCardPoints = floor . fromRational . sum . fmap cardPoints
 
 cardsWorth pts = filter (\ c -> (cardPointsFromRules pts) == cardPoints c) cardDeck

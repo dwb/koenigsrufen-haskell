@@ -1,8 +1,8 @@
 {-# LANGUAGE ExistentialQuantification #-}
-{-# LANGUAGE ImpredicativeTypes #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE Rank2Types #-}
 {-# LANGUAGE TemplateHaskell #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module KRBot.Game where
 
@@ -23,6 +23,8 @@ import qualified KRBot.PromptPlayer as PromptPlayer
 
 
 data AnyPlayer = forall a. Player a => AnyPlayer a
+newtype AnyPlayerAction b =
+  AnyPlayerAction { getPlayerAction :: forall a. Player a => PlayerAction a b }
 
 type PlayerHands = Map.Map PlayerPosition PlayerHand
 
@@ -110,7 +112,7 @@ dealCards = do
     where packetToEach cs = foldM packetToPlayer cs allPlayers
           packetToPlayer cs p = do
               let (packet, cs') = splitAt 6 cs
-              doActionOfPlayer p $ receiveDealtCards packet
+              doActionOfPlayer p $ AnyPlayerAction $ receiveDealtCards packet
               playerHands %= mapAdjustWithDefault [] (sort . (++ packet)) p
               return cs'
 
@@ -121,9 +123,9 @@ bidForContract = bidForContract' allPlayers []
             narrate $ "decided: " ++ show p ++ " bid " ++ show ct
             contract .= Just ct
             declarer .= Just p
-            doActionOfAllPlayers $ notifyContract p ct
+            doActionOfAllPlayers $ AnyPlayerAction $ notifyContract p ct
           bidForContract' (p:nextPlayers) bidsSoFar = do
-            bid <- doActionOfPlayer p $ makeBid bidsSoFar
+            bid <- doActionOfPlayer p $ AnyPlayerAction $ makeBid bidsSoFar
             if bidIsLegal bid p bidsSoFar then do
                 let bidsSoFar' = bidsSoFar ++ [bid]
                 let nextPlayers' = case bid of
@@ -131,7 +133,7 @@ bidForContract = bidForContract' allPlayers []
                                     Just _  -> nextPlayers ++ [p]
                 bidForContract' nextPlayers' bidsSoFar'
               else do
-                doActionOfPlayer p $ notifyPlayerError IllegalBid
+                doActionOfPlayer p $ AnyPlayerAction $ notifyPlayerError IllegalBid
                 bidForContract' (p:nextPlayers) bidsSoFar
                 
 
@@ -139,10 +141,10 @@ getCalledKing = do
     contract' <- justContract
     when (contract' `elem` kingCallingContracts) $ do
         declarer' <- justDeclarer
-        ck <- doActionOfPlayer declarer' callKingSuit
+        ck <- doActionOfPlayer declarer' $ AnyPlayerAction callKingSuit
         calledKing .= Just ck
         narrate $ show ck ++ " was called"
-        doActionOfAllPlayers $ notifyKingSuit ck
+        doActionOfAllPlayers $ AnyPlayerAction $ notifyKingSuit ck
         dp <- findDeclarersPartner
         declarersPartner .= dp
 
@@ -159,7 +161,7 @@ declarerExchangeWithTalon = do
                 HalfTalonExchange t _ -> t `elem` [fst ths, snd ths]
                 FullTalonExchange t   -> t == talon'
           doExchange contract' declarer' talon' = do
-            te <- doActionOfPlayer declarer' $ exchangeWithTalon talon'
+            te <- doActionOfPlayer declarer' $ AnyPlayerAction $ exchangeWithTalon talon'
             return $ (not $ verifyExchange te talon') &&
                 error "I haven't got back the same talon as I gave out"
             case te of
@@ -167,7 +169,7 @@ declarerExchangeWithTalon = do
                     if contract' `elem` [Rufer, Besserrufer, Dreier, Besserdreier] then do
                         narrate $ "Kept " ++ show kept
                         rejectedTalon .= talonToList rejected
-                        doActionOfPlayer declarer' $ receiveDealtCards $ talonToList kept
+                        doActionOfPlayer declarer' $ AnyPlayerAction $ receiveDealtCards $ talonToList kept
                     else error "Wrong contract"
                 FullTalonExchange rejected ->
                     if contract' == Sechserdreier then
@@ -236,8 +238,8 @@ putPlayerState :: Player a => PlayerPosition -> a -> GameAction ()
 putPlayerState p ps = players %= Map.insert p (AnyPlayer ps)
 
 
-doPlayerAction :: (forall a. Player a => PlayerAction a b) -> PlayerPosition -> GameAction b
-doPlayerAction paf p = do
+doPlayerAction :: AnyPlayerAction b -> PlayerPosition -> GameAction b
+doPlayerAction (getPlayerAction -> paf) p = do
     players' <- use players
     case fromJust . Map.lookup p $ players' of
         AnyPlayer ps -> do
@@ -245,15 +247,15 @@ doPlayerAction paf p = do
             putPlayerState p ps'
             return result
 
-doActionOfPlayer :: PlayerPosition -> (forall a. Player a => PlayerAction a b) -> GameAction b
+doActionOfPlayer :: PlayerPosition -> AnyPlayerAction b -> GameAction b
 doActionOfPlayer = flip doPlayerAction
 
-doActionOfPlayers :: [PlayerPosition] -> (forall a. Player a => PlayerAction a b) -> GameAction ()
+doActionOfPlayers :: [PlayerPosition] -> AnyPlayerAction b -> GameAction ()
 doActionOfPlayers ps paf = forM_ ps $ doPlayerAction paf
 
 doActionOfAllPlayers = doActionOfPlayers allPlayers
 
-doActionOfPlayersExcept :: PlayerPosition -> (forall a. Player a => PlayerAction a b) -> GameAction ()
+doActionOfPlayersExcept :: PlayerPosition -> AnyPlayerAction b -> GameAction ()
 doActionOfPlayersExcept exceptPlayer = doActionOfPlayers players
     where players = delete exceptPlayer allPlayers
 
